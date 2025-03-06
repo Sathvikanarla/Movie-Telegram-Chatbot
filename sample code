@@ -1,0 +1,78 @@
+import logging
+import requests
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+
+#  Replace with your API keys
+TELEGRAM_BOT_TOKEN = "7628920992:AAGkPS-niCIUDroo5H7BmXm9SSkTU2xKMeA"
+OMDB_API_KEY = "YOUR_OMDB_API_KEY"
+
+#  In-memory storage (key-value pair)
+movie_cache = {}
+
+#  Setup logging
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+#  Function to get movie details
+def get_movie_details(movie_name):
+    if movie_name in movie_cache:
+        return movie_cache[movie_name]  # Return cached result
+
+    url = f"http://www.omdbapi.com/?t={movie_name}&apikey={OMDB_API_KEY}"
+    response = requests.get(url).json()
+    
+    if response.get("Response") == "True":
+        movie_info = {
+            "title": response.get("Title", "N/A"),
+            "year": response.get("Year", "N/A"),
+            "genre": response.get("Genre", "N/A"),
+            "director": response.get("Director", "N/A"),
+            "plot": response.get("Plot", "N/A"),
+            "poster": response.get("Poster", "")
+        }
+        movie_cache[movie_name] = movie_info  # Store in cache
+        return movie_info
+    else:
+        return None
+
+#  Start command
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text("🎥 Welcome to the Movie Bot!\nSend a movie name to get details.")
+
+#  Movie search handler
+def movie_search(update: Update, context: CallbackContext) -> None:
+    movie_name = update.message.text.strip()
+    
+    movie_info = get_movie_details(movie_name)
+    if movie_info:
+        message = (f"🎬 *{movie_info['title']}* ({movie_info['year']})\n"
+                   f"📌 Genre: {movie_info['genre']}\n"
+                   f"🎬 Director: {movie_info['director']}\n"
+                   f"📖 Plot: {movie_info['plot']}")
+        
+        update.message.reply_text(message, parse_mode="Markdown")
+        
+        if movie_info["poster"] and movie_info["poster"] != "N/A":
+            update.message.reply_photo(movie_info["poster"])
+    else:
+        update.message.reply_text("❌ Movie not found! Try another title.")
+
+#  Error handler
+def error(update: Update, context: CallbackContext) -> None:
+    logger.warning(f"Update {update} caused error {context.error}")
+
+#  Main function
+def main():
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, movie_search))
+    dp.add_error_handler(error)
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
